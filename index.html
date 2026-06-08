@@ -285,7 +285,7 @@
             </div>
             <img id="preview-img" alt="预览">
         </div>
-        <input type="file" id="file-input" accept="image/*" hidden>
+        <input type="file" id="file-input" accept="image/*" style="position:fixed;top:-9999px;left:-9999px;opacity:0">
     </div>
 
     <!-- Image Info Card (shown after upload) -->
@@ -825,21 +825,110 @@ function showStats() {
     }).join('');
 }
 
-// ====== 下载 ======
-function downloadPattern() {
-    const canvas = document.getElementById('pattern-canvas');
-    canvas.toBlob(blob => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `拼豆图纸_${boardSize}x${boardSize}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }, 'image/png');
+// ====== 下载（兼容手机） ======
+async function canvasToBlob(canvas) {
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
 }
 
-function downloadFull() {
+async function downloadByShare(blob, filename) {
+    const file = new File([blob], filename, { type: 'image/png' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+            await navigator.share({ files: [file], title: filename });
+            return true;
+        } catch (e) {
+            if (e.name === 'AbortError') return true; // user cancelled
+        }
+    }
+    return false;
+}
+
+function downloadByAnchor(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
+}
+
+function downloadByNewTab(canvas, filename) {
+    // Fallback: open image in new tab for long-press save
+    const dataUrl = canvas.toDataURL('image/png');
+    const newWin = window.open('');
+    if (newWin) {
+        newWin.document.write(`
+            <!DOCTYPE html><html><head><title>${filename}</title>
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <style>body{margin:0;background:#f5f5f5;display:flex;flex-direction:column;align-items:center;padding:16px;font-family:sans-serif}
+            img{max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.1)}
+            p{margin-top:12px;font-size:14px;color:#888;text-align:center}</style></head>
+            <body><img src="${dataUrl}"><p>📱 长按图片保存到相册</p></body></html>
+        `);
+        newWin.document.close();
+    } else {
+        // popup blocked — show image inline
+        showDownloadPreview(dataUrl, filename);
+    }
+}
+
+function showDownloadPreview(dataUrl, filename) {
+    // Show a modal with the image for long-press saving
+    let modal = document.getElementById('save-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'save-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+        <div style="color:white;font-size:16px;margin-bottom:12px;font-weight:600">📱 长按图片保存到相册</div>
+        <img src="${dataUrl}" style="max-width:100%;max-height:70vh;border-radius:8px">
+        <div style="margin-top:16px;display:flex;gap:12px">
+            <button onclick="document.getElementById('save-modal').style.display='none'" 
+                style="padding:10px 24px;border-radius:10px;border:none;background:#c44dff;color:white;font-size:15px;font-weight:600;cursor:pointer">关闭</button>
+        </div>
+    `;
+    modal.style.display = 'flex';
+}
+
+async function downloadPattern() {
+    const canvas = document.getElementById('pattern-canvas');
+    const filename = `拼豆图纸_${boardSize}x${boardSize}.png`;
+    const blob = await canvasToBlob(canvas);
+
+    // Try share (mobile) → anchor download → new tab fallback
+    const shared = await downloadByShare(blob, filename);
+    if (!shared) {
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile && !(/Chrome|Firefox/i.test(navigator.userAgent))) {
+            // iOS Safari: open in new tab for long-press save
+            downloadByNewTab(canvas, filename);
+        } else {
+            downloadByAnchor(blob, filename);
+        }
+    }
+}
+
+async function downloadFull() {
     // Full version: pattern WITH labels + legend + stats on one image
+    const canvas = buildFullCanvas();
+    const filename = `拼豆图纸_${boardSize}x${boardSize}_完整版.png`;
+    const blob = await canvasToBlob(canvas);
+
+    const shared = await downloadByShare(blob, filename);
+    if (!shared) {
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile && !(/Chrome|Firefox/i.test(navigator.userAgent))) {
+            downloadByNewTab(canvas, filename);
+        } else {
+            downloadByAnchor(blob, filename);
+        }
+    }
+}
+
+function buildFullCanvas() {
     const size = boardSize;
     const cellSize = size <= 29 ? 32 : 20;
     const patternW = size * cellSize + 1;
@@ -853,113 +942,4 @@ function downloadFull() {
             counts[ci] = (counts[ci] || 0) + 1;
         }
     }
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-
-    // Layout: title + pattern + legend
-    const legendCols = 4;
-    const legendItemH = 28;
-    const legendRows = Math.ceil(sorted.length / legendCols);
-    const legendH = legendRows * legendItemH + 20;
-
-    const totalW = Math.max(patternW + 40, 700);
-    const totalH = 60 + patternH + 20 + legendH + 40;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = totalW;
-    canvas.height = totalH;
-    const ctx = canvas.getContext('2d');
-
-    // Background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, totalW, totalH);
-
-    // Title
-    ctx.fillStyle = '#333';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`拼豆图纸 ${size}×${size}  共${size*size}颗  ${sorted.length}色`, totalW / 2, 38);
-
-    // Pattern
-    const offsetX = Math.floor((totalW - patternW) / 2);
-    const offsetY = 55;
-
-    for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-            const ci = patternData[y][x];
-            const [r, g, b] = BEAD_PALETTE[ci].rgb;
-            ctx.fillStyle = `rgb(${r},${g},${b})`;
-            ctx.fillRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize, cellSize);
-
-            // Color code label
-            if (cellSize >= 16) {
-                const code = BEAD_PALETTE[ci].code;
-                const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                ctx.fillStyle = brightness > 128 ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.8)';
-                const fontSize = cellSize >= 28 ? 10 : 7;
-                ctx.font = `bold ${fontSize}px monospace`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(code, offsetX + x * cellSize + cellSize / 2, offsetY + y * cellSize + cellSize / 2);
-            }
-        }
-    }
-
-    // Grid
-    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i <= size; i++) {
-        ctx.beginPath();
-        ctx.moveTo(offsetX + i * cellSize + 0.5, offsetY);
-        ctx.lineTo(offsetX + i * cellSize + 0.5, offsetY + patternH);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(offsetX, offsetY + i * cellSize + 0.5);
-        ctx.lineTo(offsetX + patternW, offsetY + i * cellSize + 0.5);
-        ctx.stroke();
-    }
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= size; i += 5) {
-        ctx.beginPath();
-        ctx.moveTo(offsetX + i * cellSize + 0.5, offsetY);
-        ctx.lineTo(offsetX + i * cellSize + 0.5, offsetY + patternH);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(offsetX, offsetY + i * cellSize + 0.5);
-        ctx.lineTo(offsetX + patternW, offsetY + i * cellSize + 0.5);
-        ctx.stroke();
-    }
-
-    // Legend
-    const legendY = offsetY + patternH + 16;
-    const legendItemW = totalW / legendCols;
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'left';
-
-    sorted.forEach(([ci, cnt], i) => {
-        const col = i % legendCols;
-        const row = Math.floor(i / legendCols);
-        const lx = col * legendItemW + 16;
-        const ly = legendY + row * legendItemH;
-
-        const c = BEAD_PALETTE[ci];
-        // Color swatch
-        ctx.fillStyle = `rgb(${c.rgb.join(',')})`;
-        ctx.beginPath();
-        ctx.arc(lx + 8, ly + 10, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#ccc';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        // Text
-        ctx.fillStyle = '#333';
-        ctx.fillText(`${c.code} ${c.name} ×${cnt}`, lx + 20, ly + 14);
-    });
-
-    // Download
-    canvas.toBlob(blob => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.downl
+    const sorted = Object.entries(counts).sort((a,
