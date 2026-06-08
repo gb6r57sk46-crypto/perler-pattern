@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>拼豆图纸生成器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f0eb;
+            color: #333;
+            min-height: 100vh;
+            padding-bottom: 60px;
+        }
+        .header {
+            background: linear-gradient(135deg, #ff6b9d, #c44dff, #6e8efb);
+            padding: 20px 16px;
+            text-align: center;
+            color: white;
+        }
+        .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+        .header p { font-size: 13px; opacity: 0.9; }
+        .container { max-width: 480px; margin: 0 auto; padding: 16px; }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title span { font-size: 20px; }
+
+        /* Upload Area */
+        .upload-area {
+            border: 2px dashed #d0c8c0;
+            border-radius: 12px;
+            padding: 32px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #faf8f5;
+        }
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #c44dff;
+            background: #f8f0ff;
+        }
+        .upload-area.has-image {
+            padding: 12px;
+            border-style: solid;
+            border-color: #c44dff;
+        }
+        .upload-icon { font-size: 40px; margin-bottom: 8px; }
+        .upload-text { font-size: 14px; color: #888; }
+        .upload-text strong { color: #c44dff; }
+        #preview-img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        /* Settings */
+        .size-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .size-btn {
+            padding: 14px 12px;
+            border: 2px solid #e0d8d0;
+            border-radius: 12px;
+            background: white;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+        .size-btn:hover { border-color: #c44dff; }
+        .size-btn.active {
+            border-color: #c44dff;
+            background: #f8f0ff;
+            color: #7b2fb5;
+        }
+        .size-btn .size-name { font-weight: 600; display: block; margin-bottom: 2px; }
+        .size-btn .size-desc { font-size: 12px; color: #999; }
+        .size-btn.active .size-desc { color: #9b59b6; }
+
+        .palette-info {
+            margin-top: 12px;
+            font-size: 12px;
+            color: #999;
+            padding: 8px 12px;
+            background: #faf8f5;
+            border-radius: 8px;
+        }
+
+        /* Generate Button */
+        .gen-btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #ff6b9d, #c44dff);
+            color: white;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(196,77,255,0.3);
+        }
+        .gen-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(196,77,255,0.4); }
+        .gen-btn:active { transform: translateY(0); }
+        .gen-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* Loading */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.85);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .loading-overlay.show { display: flex; }
+        .spinner {
+            width: 48px; height: 48px;
+            border: 4px solid #e0d0f0;
+            border-top-color: #c44dff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { margin-top: 16px; font-size: 15px; color: #666; }
+
+        /* Result */
+        .result-section { display: none; }
+        .result-section.show { display: block; }
+        .pattern-viewport {
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
+            border: 1px solid #e0d8d0;
+            border-radius: 12px;
+            background: white;
+            max-height: 60vh;
+            position: relative;
+        }
+        #pattern-canvas { display: block; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .stat-item {
+            background: #faf8f5;
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+        }
+        .stat-value { font-size: 22px; font-weight: 700; color: #7b2fb5; }
+        .stat-label { font-size: 12px; color: #999; margin-top: 2px; }
+
+        /* Color List */
+        .color-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .color-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0ece8;
+            font-size: 13px;
+        }
+        .color-swatch {
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            border: 2px solid #e0d8d0;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        .color-name { flex: 1; }
+        .color-count { font-weight: 600; color: #7b2fb5; min-width: 50px; text-align: right; }
+
+        /* Download Buttons */
+        .dl-btns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .dl-btn {
+            padding: 12px;
+            border: 2px solid #c44dff;
+            border-radius: 12px;
+            background: white;
+            color: #7b2fb5;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .dl-btn:hover {
+            background: #f8f0ff;
+        }
+        .dl-btn.primary {
+            background: linear-gradient(135deg, #ff6b9d, #c44dff);
+            color: white;
+            border: none;
+        }
+        .dl-btn.primary:hover { box-shadow: 0 4px 12px rgba(196,77,255,0.3); }
+
+        /* Toggle */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+            font-size: 14px;
+        }
+        .toggle {
+            width: 44px; height: 24px;
+            background: #d0c8c0;
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .toggle.active { background: #c44dff; }
+        .toggle::after {
+            content: '';
+            width: 20px; height: 20px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px; left: 2px;
+            transition: transform 0.3s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .toggle.active::after { transform: translateX(20px); }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #bbb;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🧩 拼豆图纸生成器</h1>
+    <p>上传图片，一键生成拼豆图纸</p>
+</div>
+
+<div class="container">
+    <!-- Upload Card -->
+    <div class="card">
+        <div class="card-title"><span>📷</span> 上传图片</div>
+        <div class="upload-area" id="upload-area">
+            <div id="upload-prompt">
+                <div class="upload-icon">🖼️</div>
+                <div class="upload-text">点击或拖拽上传图片<br><strong>支持 JPG / PNG / WEBP</strong></div>
+            </div>
+            <img id="preview-img" alt="预览">
+        </div>
+        <input type="file" id="file-input" accept="image/*" hidden>
+    </div>
+
+    <!-- Image Info Card (shown after upload) -->
+    <div class="card" id="image-info-card" style="display:none">
+        <div class="card-title"><span>📐</span> 图片信息</div>
+        <div id="image-info-content" style="font-size:14px;color:#666;line-height:1.8"></div>
+    </div>
+
+    <!-- Crop Mode Card -->
+    <div class="card" id="crop-card" style="display:none">
+        <div class="card-title"><span>✂️</span> 适配方式</div>
+        <div class="size-options">
+            <div class="size-btn active" data-crop="smart" onclick="selectCrop(this)">
+                <span class="size-name">🧠 智能裁剪</span>
+                <span class="size-desc">自动裁主体，不变形</span>
+            </div>
+            <div class="size-btn" data-crop="fill" onclick="selectCrop(this)">
+                <span class="size-name">🔲 填充背景</span>
+                <span class="size-desc">留白填充，图片完整</span>
+            </div>
+        </div>
+        <div id="fill-color-row" class="toggle-row" style="display:none">
+            <span>背景色</span>
+            <div style="display:flex;gap:8px;align-items:center">
+                <div class="bg-opt active" data-bg="white" onclick="selectBg(this)" style="width:28px;height:28px;border-radius:50%;background:#fff;border:2px solid #ccc;cursor:pointer"></div>
+                <div class="bg-opt" data-bg="black" onclick="selectBg(this)" style="width:28px;height:28px;border-radius:50%;background:#000;border:2px solid #ccc;cursor:pointer"></div>
+                <div class="bg-opt" data-bg="auto" onclick="selectBg(this)" style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#fff,#ddd);border:2px solid #ccc;cursor:pointer;font-size:10px;display:flex;align-items:center;justify-content:center">A</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Card -->
+    <div class="card">
+        <div class="card-title"><span>🧩</span> 选择板型 <span id="size-recommend" style="font-size:12px;color:#c44dff;font-weight:400;margin-left:4px"></span></div>
+        <div class="size-options">
+            <div class="size-btn active" data-size="29" onclick="selectSize(this)">
+                <span class="size-name">小方板 29×29</span>
+                <span class="size-desc">841颗 · 入门推荐</span>
+            </div>
+            <div class="size-btn" data-size="58" onclick="selectSize(this)">
+                <span class="size-name">大方板 58×58</span>
+                <span class="size-desc">3364颗 · 细节丰富</span>
+            </div>
+        </div>
+        <div class="toggle-row">
+            <span>抖动处理（颜色过渡更自然）</span>
+            <div class="toggle active" id="dither-toggle" onclick="toggleDither()"></div>
+        </div>
+        <div class="toggle-row">
+            <span>显示色号标注（方便拼豆对照）</span>
+            <div class="toggle" id="label-toggle" onclick="toggleLabel()"></div>
+        </div>
+        <div class="palette-info">
+            🎨 当前色板：通用拼豆色板（40色）| 更多品牌色板即将上线
+        </div>
+    </div>
+
+    <!-- Generate Button -->
+    <button class="gen-btn" id="gen-btn" onclick="generate()" disabled>
+        生成图纸 ✨
+    </button>
+
+    <!-- Result Section -->
+    <div class="result-section" id="result-section">
+        <div class="card" style="margin-top:16px">
+            <div class="card-title"><span>📊</span> 用豆统计</div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-total">0</div>
+                    <div class="stat-label">总用豆数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-colors">0</div>
+                    <div class="stat-label">颜色种数</div>
+                </div>
+            </div>
+            <div class="color-list" id="color-list"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title"><span>🧩</span> 图纸预览</div>
+            <div class="pattern-viewport" id="pattern-viewport">
+                <canvas id="pattern-canvas"></canvas>
+            </div>
+        </div>
+
+        <div class="dl-btns">
+            <button class="dl-btn" onclick="downloadPattern()">📥 下载图纸</button>
+            <button class="dl-btn primary" onclick="downloadFull()">📥 下载完整版</button>
+        </div>
+    </div>
+</div>
+
+<div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">正在生成图纸...</div>
+</div>
+
+<div class="footer">拼豆图纸生成器 · Made with 💜</div>
+
+<script>
+// ====== 拼豆色板定义 ======
+const BEAD_PALETTE = [
+    { code: 'W01', name: '白色',   rgb: [255, 255, 255] },
+    { code: 'W02', name: '象牙白', rgb: [255, 253, 230] },
+    { code: 'Y01', name: '浅黄',   rgb: [255, 255, 150] },
+    { code: 'Y02', name: '黄色',   rgb: [255, 221, 0]   },
+    { code: 'Y03', name: '橙黄',   rgb: [255, 179, 0]   },
+    { code: 'O01', name: '浅橙',   rgb: [255, 183, 130] },
+    { code: 'O02', name: '橙色',   rgb: [255, 122, 0]   },
+    { code: 'P01', name: '蜜桃',   rgb: [255, 183, 165] },
+    { code: 'P02', name: '浅粉',   rgb: [255, 183, 197] },
+    { code: 'P03', name: '粉色',   rgb: [255, 105, 150] },
+    { code: 'P04', name: '玫红',   rgb: [255, 50, 100]  },
+    { code: 'R01', name: '红色',   rgb: [210, 0, 0]     },
+    { code: 'R02', name: '深红',   rgb: [130, 0, 0]     },
+    { code: 'R03', name: '铁锈红', rgb: [165, 60, 20]   },
+    { code: 'L01', name: '浅紫',   rgb: [200, 170, 220] },
+    { code: 'L02', name: '薰衣草', rgb: [150, 110, 180] },
+    { code: 'V01', name: '紫色',   rgb: [100, 0, 150]   },
+    { code: 'V02', name: '深紫',   rgb: [60, 0, 90]     },
+    { code: 'M01', name: '品红',   rgb: [200, 0, 100]   },
+    { code: 'B01', name: '浅蓝',   rgb: [140, 190, 255] },
+    { code: 'B02', name: '天蓝',   rgb: [80, 150, 230]  },
+    { code: 'B03', name: '蓝色',   rgb: [0, 70, 180]    },
+    { code: 'B04', name: '宝蓝',   rgb: [0, 30, 130]    },
+    { code: 'B05', name: '深蓝',   rgb: [0, 0, 80]      },
+    { code: 'G01', name: '浅绿',   rgb: [150, 230, 150] },
+    { code: 'G02', name: '嫩绿',   rgb: [80, 200, 80]   },
+    { code: 'G03', name: '黄绿',   rgb: [130, 200, 0]   },
+    { code: 'G04', name: '绿色',   rgb: [0, 140, 0]     },
+    { code: 'G05', name: '森绿',   rgb: [0, 90, 30]     },
+    { code: 'G06', name: '深绿',   rgb: [0, 60, 20]     },
+    { code: 'T01', name: '薄荷',   rgb: [160, 230, 200] },
+    { code: 'T02', name: '青色',   rgb: [0, 160, 140]   },
+    { code: 'GR1', name: '浅灰',   rgb: [192, 192, 192] },
+    { code: 'GR2', name: '灰色',   rgb: [128, 128, 128] },
+    { code: 'GR3', name: '深灰',   rgb: [64, 64, 64]    },
+    { code: 'BK1', name: '黑色',   rgb: [0, 0, 0]       },
+    { code: 'N01', name: '米色',   rgb: [210, 180, 140] },
+    { code: 'N02', name: '浅棕',   rgb: [180, 120, 60]  },
+    { code: 'N03', name: '棕色',   rgb: [130, 70, 20]   },
+    { code: 'N04', name: '深棕',   rgb: [70, 35, 10]    },
+];
+
+// ====== 状态变量 ======
+let uploadedImage = null;
+let boardSize = 29;
+let useDither = true;
+let cropMode = 'smart'; // 'smart' | 'fill'
+let fillColor = 'white'; // 'white' | 'black' | 'auto'
+let showLabels = false;
+let patternData = null; // 2D array of palette indices
+
+// ====== 上传处理 ======
+const uploadArea = document.getElementById('upload-area');
+const fileInput = document.getElementById('file-input');
+const previewImg = document.getElementById('preview-img');
+const uploadPrompt = document.getElementById('upload-prompt');
+const genBtn = document.getElementById('gen-btn');
+
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+    if (!file.type.startsWith('image/')) return alert('请上传图片文件');
+    const reader = new FileReader();
+    reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+            uploadedImage = img;
+            previewImg.src = e.target.result;
+            previewImg.style.display = 'block';
+            uploadPrompt.style.display = 'none';
+            uploadArea.classList.add('has-image');
+            genBtn.disabled = false;
+            showImageInfo(img);
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+// ====== 图片信息展示 ======
+function showImageInfo(img) {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const ratio = (w / h).toFixed(2);
+    const ratioDesc = w === h ? '1:1 正方形 ✅' :
+                      Math.abs(w/h - 1) < 0.15 ? `约1:1 接近正方形 ✅` :
+                      w > h ? `${ratio}:1 横版图片` : `1:${(h/w).toFixed(2)} 竖版图片`;
+
+    // Complexity estimate: downscale and count unique colors
+    const tc = document.createElement('canvas');
+    tc.width = 50; tc.height = 50;
+    const tctx = tc.getContext('2d');
+    tctx.drawImage(img, 0, 0, 50, 50);
+    const td = tctx.getImageData(0, 0, 50, 50).data;
+    const colorSet = new Set();
+    for (let i = 0; i < td.length; i += 16) { // sample every 4th pixel
+        colorSet.add(`${td[i]>>4},${td[i+1]>>4},${td[i+2]>>4}`);
+    }
+    const complexity = colorSet.size;
+    const complexDesc = complexity < 80 ? '🟢 简单' : complexity < 200 ? '🟡 中等' : '🔴 复杂';
+    const sizeRec = complexity < 100 ? '推荐小方板 29×29 即可' : '推荐大方板 58×58 效果更好';
+
+    const infoHtml = `
+        <div>📐 尺寸：${w} × ${h}px · ${ratioDesc}</div>
+        <div>🎨 复杂度：${complexDesc}（${complexity}色）· ${sizeRec}</div>
+        ${w < 100 || h < 100 ? '<div style="color:#e67e22">⚠️ 图片较小，放大后可能模糊，建议上传更大尺寸的图</div>' : ''}
+        ${w !== h ? '<div style="color:#c44dff">💡 非正方形图片，建议选择"智能裁剪"避免变形</div>' : ''}
+    `;
+    document.getElementById('image-info-content').innerHTML = infoHtml;
+    document.getElementById('image-info-card').style.display = 'block';
+    document.getElementById('crop-card').style.display = w === h ? 'none' : 'block';
+    document.getElementById('size-recommend').textContent = `· ${sizeRec}`;
+
+    // Auto-select board size based on complexity
+    if (complexity >= 100) {
+        document.querySelectorAll('.size-btn[data-size]').forEach(b => {
+            b.classList.toggle('active', b.dataset.size === '58');
+        });
+        boardSize = 58;
+    }
+}
+
+// ====== 设置交互 ======
+function selectSize(el) {
+    document.querySelectorAll('.size-btn[data-size]').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    boardSize = parseInt(el.dataset.size);
+}
+
+function toggleDither() {
+    const t = document.getElementById('dither-toggle');
+    useDither = !useDither;
+    t.classList.toggle('active', useDither);
+}
+
+function selectCrop(el) {
+    document.querySelectorAll('.size-btn[data-crop]').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    cropMode = el.dataset.crop;
+    document.getElementById('fill-color-row').style.display = cropMode === 'fill' ? 'flex' : 'none';
+}
+
+function selectBg(el) {
+    document.querySelectorAll('.bg-opt').forEach(b => b.style.borderColor = '#ccc');
+    el.style.borderColor = '#c44dff';
+    fillColor = el.dataset.bg;
+}
+
+function toggleLabel() {
+    const t = document.getElementById('label-toggle');
+    showLabels = !showLabels;
+    t.classList.toggle('active', showLabels);
+    if (patternData) renderPattern();
+}
+
+// ====== 颜色匹配 ======
+function colorDistance(r1, g1, b1, r2, g2, b2) {
+    // Weighted Euclidean distance for better perceptual matching
+    const rmean = (r1 + r2) / 2;
+    const dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
+    return Math.sqrt(
+        (2 + rmean / 256) * dr * dr +
+        4 * dg * dg +
+        (2 + (255 - rmean) / 256) * db * db
+    );
+}
+
+function findNearestColorIndex(r, g, b) {
+    let minDist = Infinity, minIdx = 0;
+    for (let i = 0; i < BEAD_PALETTE.length; i++) {
+        const [pr, pg, pb] = BEAD_PALETTE[i].rgb;
+        const d = colorDistance(r, g, b, pr, pg, pb);
+        if (d < minDist) { minDist = d; minIdx = i; }
+    }
+    return minIdx;
+}
+
+// ====== 核心：生成图纸 ======
+async function generate() {
+    if (!uploadedImage) return;
+    const loading = document.getElementById('loading');
+    loading.classList.add('show');
+
+    // Use setTimeout to let UI update
+    await new Promise(r => setTimeout(r, 50));
+
+    try {
+        const size = boardSize;
+
+        // Resize image to board dimensions with crop/fill handling
+        const srcCanvas = document.createElement('canvas');
+        srcCanvas.width = size;
+        srcCanvas.height = size;
+        const srcCtx = srcCanvas.getContext('2d');
+        srcCtx.imageSmoothingEnabled = true;
+        srcCtx.imageSmoothingQuality = 'high';
+
+        const iw = uploadedImage.naturalWidth;
+        const ih = uploadedImage.naturalHeight;
+
+        if (cropMode === 'fill') {
+            // Fill mode: fit entire image, fill background
+            let bgR = 255, bgG = 255, bgB = 255; // default white
+            if (fillColor === 'black') { bgR = 0; bgG = 0; bgB = 0; }
+            else if (fillColor === 'auto') {
+                // Sample edges to determine background color
+                const tc = document.createElement('canvas');
+                tc.width = 20; tc.height = 20;
+                const tctx = tc.getContext('2d');
+                tctx.drawImage(uploadedImage, 0, 0, 20, 20);
+                const edgeData = tctx.getImageData(0, 0, 20, 20).data;
+                let sr = 0, sg = 0, sb = 0, cnt = 0;
+                // Sample border pixels
+                for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) {
+                    if (x === 0 || x === 19 || y === 0 || y === 19) {
+                        const i = (y * 20 + x) * 4;
+                        sr += edgeData[i]; sg += edgeData[i+1]; sb += edgeData[i+2]; cnt++;
+                    }
+                }
+                bgR = Math.round(sr/cnt); bgG = Math.round(sg/cnt); bgB = Math.round(sb/cnt);
+            }
+            srcCtx.fillStyle = `rgb(${bgR},${bgG},${bgB})`;
+            srcCtx.fillRect(0, 0, size, size);
+
+            // Scale to fit, centered
+            const scale = Math.min(size / iw, size / ih);
+            const dw = iw * scale, dh = ih * scale;
+            const dx = (size - dw) / 2, dy = (size - dh) / 2;
+            srcCtx.drawImage(uploadedImage, dx, dy, dw, dh);
+        } else {
+            // Smart crop: cover the square, crop edges, center on image
+            const scale = Math.max(size / iw, size / ih);
+            const sw = size / scale, sh = size / scale;
+            const sx = (iw - sw) / 2, sy = (ih - sh) / 2;
+            srcCtx.drawImage(uploadedImage, sx, sy, sw, sh, 0, 0, size, size);
+        }
+
+        const imgData = srcCtx.getImageData(0, 0, size, size);
+        const pixels = imgData.data;
+
+        // Color quantization
+        patternData = new Array(size);
+        for (let y = 0; y < size; y++) {
+            patternData[y] = new Array(size);
+        }
+
+        if (useDither) {
+            // Floyd-Steinberg dithering
+            const fs = new Float32Array(size * size * 3);
+            for (let i = 0; i < size * size; i++) {
+                fs[i * 3] = pixels[i * 4];
+                fs[i * 3 + 1] = pixels[i * 4 + 1];
+                fs[i * 3 + 2] = pixels[i * 4 + 2];
+            }
+
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const idx = (y * size + x) * 3;
+                    const r = Math.max(0, Math.min(255, Math.round(fs[idx])));
+                    const g = Math.max(0, Math.min(255, Math.round(fs[idx + 1])));
+                    const b = Math.max(0, Math.min(255, Math.round(fs[idx + 2])));
+
+                    const ci = findNearestColorIndex(r, g, b);
+                    patternData[y][x] = ci;
+
+                    const [nr, ng, nb] = BEAD_PALETTE[ci].rgb;
+                    const errR = r - nr, errG = g - ng, errB = b - nb;
+
+                    const distribute = (dx, dy, factor) => {
+                        const nx = x + dx, ny = y + dy;
+                        if (nx >= 0 && nx < size && ny < size) {
+                            const ni = (ny * size + nx) * 3;
+                            fs[ni] += errR * factor;
+                            fs[ni + 1] += errG * factor;
+                            fs[ni + 2] += errB * factor;
+                        }
+                    };
+                    distribute(1, 0, 7/16);
+                    distribute(-1, 1, 3/16);
+                    distribute(0, 1, 5/16);
+                    distribute(1, 1, 1/16);
+                }
+            }
+        } else {
+            // Simple nearest color
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const i = (y * size + x) * 4;
+                    patternData[y][x] = findNearestColorIndex(pixels[i], pixels[i+1], pixels[i+2]);
+                }
+            }
+        }
+
+        // Render and show results
+        renderPattern();
+        showStats();
+        document.getElementById('result-section').classList.add('show');
+        document.getElementById('result-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } finally {
+        loading.classList.remove('show');
+    }
+}
+
+// ====== 渲染图纸 ======
+function renderPattern() {
+    const size = boardSize;
+    // Larger cells when labels are shown
+    let cellSize;
+    if (showLabels) {
+        cellSize = size <= 29 ? 28 : 18;
+    } else {
+        cellSize = size <= 29 ? 20 : 14;
+    }
+    const canvasSize = size * cellSize + 1;
+
+    const canvas = document.getElementById('pattern-canvas');
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
+    const ctx = canvas.getContext('2d');
+
+    // Fill cells with bead colors
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const ci = patternData[y][x];
+            const [r, g, b] = BEAD_PALETTE[ci].rgb;
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+
+            if (showLabels && cellSize >= 16) {
+                // Draw color code text
+                const code = BEAD_PALETTE[ci].code;
+                // Determine text color: light bg → dark text, dark bg → light text
+                const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                ctx.fillStyle = brightness > 128 ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.85)';
+                const fontSize = cellSize >= 28 ? 9 : 7;
+                ctx.font = `bold ${fontSize}px monospace`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(code, x * cellSize + cellSize / 2, y * cellSize + cellSize / 2);
+            } else if (cellSize >= 14) {
+                // Draw bead hole in center
+                const cx = x * cellSize + cellSize / 2;
+                const cy = y * cellSize + cellSize / 2;
+                const holeR = Math.max(2, cellSize * 0.15);
+                ctx.beginPath();
+                ctx.arc(cx, cy, holeR, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(0,0,0,0.12)`;
+                ctx.fill();
+            }
+        }
+    }
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= size; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * cellSize + 0.5, 0);
+        ctx.lineTo(i * cellSize + 0.5, canvasSize);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i * cellSize + 0.5);
+        ctx.lineTo(canvasSize, i * cellSize + 0.5);
+        ctx.stroke();
+    }
+
+    // Thicker lines every 5 cells for counting
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= size; i += 5) {
+        ctx.beginPath();
+        ctx.moveTo(i * cellSize + 0.5, 0);
+        ctx.lineTo(i * cellSize + 0.5, canvasSize);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i * cellSize + 0.5);
+        ctx.lineTo(canvasSize, i * cellSize + 0.5);
+        ctx.stroke();
+    }
+
+    // Row/column numbers for counting
+    if (cellSize >= 14) {
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        const numFontSize = Math.max(8, cellSize * 0.5);
+        ctx.font = `${numFontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        // Column numbers at top
+        for (let x = 0; x < size; x += 5) {
+            ctx.fillText(x + 1, x * cellSize + cellSize / 2, 2);
+        }
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        // Row numbers at left
+        for (let y = 0; y < size; y += 5) {
+            ctx.fillText(y + 1, 2, y * cellSize + cellSize / 2);
+        }
+    }
+}
+
+// ====== 统计 ======
+function showStats() {
+    const counts = {};
+    const size = boardSize;
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const ci = patternData[y][x];
+            counts[ci] = (counts[ci] || 0) + 1;
+        }
+    }
+
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const totalBeads = size * size;
+
+    document.getElementById('stat-total').textContent = totalBeads;
+    document.getElementById('stat-colors').textContent = sorted.length;
+
+    const colorList = document.getElementById('color-list');
+    colorList.innerHTML = sorted.map(([ci, cnt]) => {
+        const c = BEAD_PALETTE[ci];
+        const pct = ((cnt / totalBeads) * 100).toFixed(1);
+        return `<div class="color-item">
+            <div class="color-swatch" style="background:rgb(${c.rgb.join(',')})"></div>
+            <span class="color-name">${c.code} ${c.name}</span>
+            <span class="color-count">${cnt}颗 (${pct}%)</span>
+        </div>`;
+    }).join('');
+}
+
+// ====== 下载 ======
+function downloadPattern() {
+    const canvas = document.getElementById('pattern-canvas');
+    canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `拼豆图纸_${boardSize}x${boardSize}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, 'image/png');
+}
+
+function downloadFull() {
+    // Full version: pattern WITH labels + legend + stats on one image
+    const size = boardSize;
+    const cellSize = size <= 29 ? 32 : 20;
+    const patternW = size * cellSize + 1;
+    const patternH = size * cellSize + 1;
+
+    // Count colors
+    const counts = {};
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const ci = patternData[y][x];
+            counts[ci] = (counts[ci] || 0) + 1;
+        }
+    }
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+    // Layout: title + pattern + legend
+    const legendCols = 4;
+    const legendItemH = 28;
+    const legendRows = Math.ceil(sorted.length / legendCols);
+    const legendH = legendRows * legendItemH + 20;
+
+    const totalW = Math.max(patternW + 40, 700);
+    const totalH = 60 + patternH + 20 + legendH + 40;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = totalW;
+    canvas.height = totalH;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, totalW, totalH);
+
+    // Title
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`拼豆图纸 ${size}×${size}  共${size*size}颗  ${sorted.length}色`, totalW / 2, 38);
+
+    // Pattern
+    const offsetX = Math.floor((totalW - patternW) / 2);
+    const offsetY = 55;
+
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const ci = patternData[y][x];
+            const [r, g, b] = BEAD_PALETTE[ci].rgb;
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize, cellSize);
+
+            // Color code label
+            if (cellSize >= 16) {
+                const code = BEAD_PALETTE[ci].code;
+                const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                ctx.fillStyle = brightness > 128 ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.8)';
+                const fontSize = cellSize >= 28 ? 10 : 7;
+                ctx.font = `bold ${fontSize}px monospace`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(code, offsetX + x * cellSize + cellSize / 2, offsetY + y * cellSize + cellSize / 2);
+            }
+        }
+    }
+
+    // Grid
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= size; i++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + i * cellSize + 0.5, offsetY);
+        ctx.lineTo(offsetX + i * cellSize + 0.5, offsetY + patternH);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + i * cellSize + 0.5);
+        ctx.lineTo(offsetX + patternW, offsetY + i * cellSize + 0.5);
+        ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= size; i += 5) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + i * cellSize + 0.5, offsetY);
+        ctx.lineTo(offsetX + i * cellSize + 0.5, offsetY + patternH);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + i * cellSize + 0.5);
+        ctx.lineTo(offsetX + patternW, offsetY + i * cellSize + 0.5);
+        ctx.stroke();
+    }
+
+    // Legend
+    const legendY = offsetY + patternH + 16;
+    const legendItemW = totalW / legendCols;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+
+    sorted.forEach(([ci, cnt], i) => {
+        const col = i % legendCols;
+        const row = Math.floor(i / legendCols);
+        const lx = col * legendItemW + 16;
+        const ly = legendY + row * legendItemH;
+
+        const c = BEAD_PALETTE[ci];
+        // Color swatch
+        ctx.fillStyle = `rgb(${c.rgb.join(',')})`;
+        ctx.beginPath();
+        ctx.arc(lx + 8, ly + 10, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ccc';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Text
+        ctx.fillStyle = '#333';
+        ctx.fillText(`${c.code} ${c.name} ×${cnt}`, lx + 20, ly + 14);
+    });
+
+    // Download
+    canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `拼豆图纸_${boardSize}x${boardSize}_完整版.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, 'image/png');
+}
+</script>
+</body>
+</html>
