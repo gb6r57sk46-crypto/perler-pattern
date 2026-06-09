@@ -926,10 +926,11 @@ async function downloadPattern() {
     }
 }
 
-// Build high-res pattern canvas for download (3-4x display resolution)
+// Build high-res pattern canvas for download (4K resolution)
 function buildHiResPatternCanvas() {
     const size = boardSize;
-    const cellSize = size <= 29 ? 80 : 50;
+    // Target 4K: ~4096px wide canvas
+    const cellSize = Math.floor(4096 / size);
     const canvasSize = size * cellSize + 1;
 
     const canvas = document.createElement('canvas');
@@ -1031,7 +1032,8 @@ async function downloadFull() {
 
 function buildFullCanvas() {
     const size = boardSize;
-    const cellSize = size <= 29 ? 64 : 40;
+    // Target 4K: pattern area ~4096px wide
+    const cellSize = Math.floor(4096 / size);
     const patternW = size * cellSize + 1;
     const patternH = size * cellSize + 1;
 
