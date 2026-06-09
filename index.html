@@ -43,6 +43,7 @@
 
         /* Upload Area */
         .upload-area {
+            position: relative;
             border: 2px dashed #d0c8c0;
             border-radius: 12px;
             padding: 32px 16px;
@@ -50,6 +51,7 @@
             cursor: pointer;
             transition: all 0.3s;
             background: #faf8f5;
+            overflow: hidden;
         }
         .upload-area:hover, .upload-area.dragover {
             border-color: #c44dff;
@@ -67,6 +69,20 @@
             max-width: 100%;
             max-height: 200px;
             border-radius: 8px;
+            display: none;
+        }
+        /* File input: transparent overlay on upload area for direct mobile tap */
+        #file-input {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            opacity: 0;
+            z-index: 10;
+            cursor: pointer;
+            font-size: 0;
+        }
+        /* Hide file input after upload to not block preview */
+        .upload-area.has-image #file-input {
             display: none;
         }
 
@@ -279,13 +295,13 @@
     <div class="card">
         <div class="card-title"><span>📷</span> 上传图片</div>
         <div class="upload-area" id="upload-area">
+            <input type="file" id="file-input" accept="image/*">
             <div id="upload-prompt">
                 <div class="upload-icon">🖼️</div>
                 <div class="upload-text">点击或拖拽上传图片<br><strong>支持 JPG / PNG / WEBP</strong></div>
             </div>
             <img id="preview-img" alt="预览">
         </div>
-        <input type="file" id="file-input" accept="image/*" style="position:fixed;top:-9999px;left:-9999px;opacity:0">
     </div>
 
     <!-- Image Info Card (shown after upload) -->
@@ -447,7 +463,6 @@ const previewImg = document.getElementById('preview-img');
 const uploadPrompt = document.getElementById('upload-prompt');
 const genBtn = document.getElementById('gen-btn');
 
-uploadArea.addEventListener('click', () => fileInput.click());
 uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
 uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
 uploadArea.addEventListener('drop', e => {
@@ -942,4 +957,109 @@ function buildFullCanvas() {
             counts[ci] = (counts[ci] || 0) + 1;
         }
     }
-    const sorted = Object.entries(counts).sort((a,
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+    // Layout: title + pattern + legend
+    const legendCols = 4;
+    const legendItemH = 28;
+    const legendRows = Math.ceil(sorted.length / legendCols);
+    const legendH = legendRows * legendItemH + 20;
+
+    const totalW = Math.max(patternW + 40, 700);
+    const totalH = 60 + patternH + 20 + legendH + 40;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = totalW;
+    canvas.height = totalH;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, totalW, totalH);
+
+    // Title
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`拼豆图纸 ${size}×${size}  共${size*size}颗  ${sorted.length}色`, totalW / 2, 38);
+
+    // Pattern
+    const offsetX = Math.floor((totalW - patternW) / 2);
+    const offsetY = 55;
+
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const ci = patternData[y][x];
+            const [r, g, b] = BEAD_PALETTE[ci].rgb;
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize, cellSize);
+
+            if (cellSize >= 16) {
+                const code = BEAD_PALETTE[ci].code;
+                const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                ctx.fillStyle = brightness > 128 ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.8)';
+                const fontSize = cellSize >= 28 ? 10 : 7;
+                ctx.font = `bold ${fontSize}px monospace`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(code, offsetX + x * cellSize + cellSize / 2, offsetY + y * cellSize + cellSize / 2);
+            }
+        }
+    }
+
+    // Grid
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= size; i++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + i * cellSize + 0.5, offsetY);
+        ctx.lineTo(offsetX + i * cellSize + 0.5, offsetY + patternH);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + i * cellSize + 0.5);
+        ctx.lineTo(offsetX + patternW, offsetY + i * cellSize + 0.5);
+        ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= size; i += 5) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + i * cellSize + 0.5, offsetY);
+        ctx.lineTo(offsetX + i * cellSize + 0.5, offsetY + patternH);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + i * cellSize + 0.5);
+        ctx.lineTo(offsetX + patternW, offsetY + i * cellSize + 0.5);
+        ctx.stroke();
+    }
+
+    // Legend
+    const legendY = offsetY + patternH + 16;
+    const legendItemW = totalW / legendCols;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+
+    sorted.forEach(([ci, cnt], i) => {
+        const col = i % legendCols;
+        const row = Math.floor(i / legendCols);
+        const lx = col * legendItemW + 16;
+        const ly = legendY + row * legendItemH;
+
+        const c = BEAD_PALETTE[ci];
+        ctx.fillStyle = `rgb(${c.rgb.join(',')})`;
+        ctx.beginPath();
+        ctx.arc(lx + 8, ly + 10, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ccc';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = '#333';
+        ctx.fillText(`${c.code} ${c.name} ×${cnt}`, lx + 20, ly + 14);
+    });
+
+    return canvas;
+}
+</script>
+</body>
+</html>
